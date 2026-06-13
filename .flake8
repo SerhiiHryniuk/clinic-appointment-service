@@ -1,0 +1,14 @@
+[flake8]
+max-line-length = 79
+exclude =
+    .git,
+    __pycache__,
+    venv,
+    .venv,
+    env,
+    .env,
+    .config,
+    config/,
+    */migrations/
+inline-quotes = double
+ignore = ANN101, ANN102, ANN002, ANN003
