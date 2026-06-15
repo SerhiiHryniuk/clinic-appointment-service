@@ -8,6 +8,7 @@ from specializations.serializers import SpecializationSerializer
 class SpecializationViewSet(viewsets.ModelViewSet):
     queryset = Specialization.objects.all()
     serializer_class = SpecializationSerializer
+    lookup_field = "code"
 
     def get_permissions(self):
         admin_actions = ["create", "update", "partial_update", "destroy"]
