@@ -1,10 +1,10 @@
 from django.urls import include, path
-from rest_framework.routers import DefaultRouter
+from rest_framework.routers import SimpleRouter
 
 from specializations.views import SpecializationViewSet
 
 app_name = "specializations"
-router = DefaultRouter()
+router = SimpleRouter()
 
 router.register(
     "specializations",
