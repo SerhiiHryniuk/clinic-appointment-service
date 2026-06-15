@@ -1,5 +1,8 @@
+from datetime import timedelta
+
 from django.db.models import Q
-from rest_framework import viewsets, status
+from django.shortcuts import get_object_or_404
+from rest_framework import viewsets, status, generics
 from rest_framework.response import Response
 
 from config.permissions import IsAdminOrReadOnly
@@ -10,6 +13,7 @@ from doctors.serializers import (
     DoctorSlotDetailSerializer,
     DoctorSlotCreateSerializer,
     DoctorSlotListSerializer,
+    DoctorSlotBulkCreateSerializer,
 )
 
 
@@ -71,3 +75,65 @@ class DoctorSlotViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return super().destroy(request, *args, **kwargs)
+
+
+class DoctorSlotBulkCreateView(generics.GenericAPIView):
+    serializer_class = DoctorSlotBulkCreateSerializer
+    permission_classes = [IsAdminOrReadOnly]
+    queryset = DoctorSlot.objects.none()
+
+    def post(self, request, doctor_id):
+        doctor = get_object_or_404(Doctor, pk=doctor_id)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        start = serializer.validated_data["start"]
+        end = serializer.validated_data["end"]
+        interval = serializer.validated_data["interval"]
+        existing_slots = DoctorSlot.objects.filter(
+            doctor=doctor,
+            start__lt=end,
+            end__gt=start,
+        )
+        slots = []
+        current = start
+
+        while current < end:
+            next_time = current + timedelta(minutes=interval)
+            if next_time > end:
+                break
+            overlap = any(
+                slot.start < next_time and slot.end > current
+                for slot in existing_slots
+            )
+            if not overlap:
+                slots.append(
+                    DoctorSlot(
+                        doctor=doctor,
+                        start=current,
+                        end=next_time,
+                    )
+                )
+            current = next_time
+        DoctorSlot.objects.bulk_create(slots)
+
+        return Response({
+            "created": len(slots)
+        })
+
+    def get(self, request, doctor_id):
+        doctor = get_object_or_404(Doctor, pk=doctor_id)
+        queryset = DoctorSlot.objects.filter(
+            doctor=doctor
+        ).select_related("doctor")
+        start = request.query_params.get("from")
+        end = request.query_params.get("to")
+        available_only = request.query_params.get("available_only")
+        if start:
+            queryset = queryset.filter(start__gte=start)
+        if end:
+            queryset = queryset.filter(end__lte=end)
+        if available_only == "true":
+            queryset = queryset.filter(appointment__isnull=True)
+        serializer = DoctorSlotListSerializer(queryset, many=True)
+
+        return Response(serializer.data)
