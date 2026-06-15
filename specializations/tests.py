@@ -30,7 +30,7 @@ class SpecializationAPITestCase(TestCase):
         self.list_url = reverse("specializations:specializations-list")
         self.detail_url = reverse(
             "specializations:specializations-detail",
-            args=[self.specialization.id]
+            args=[self.specialization.code]
         )
         self.valid_payload = {
             "name": "Neurology",
