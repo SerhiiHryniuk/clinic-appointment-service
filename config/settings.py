@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     "specializations",
     "doctors",
     "users",
+    "appointment",
 ]
 
 MIDDLEWARE = [
