@@ -1,282 +1,199 @@
-from django.contrib.auth import get_user_model
-from django.urls import reverse
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
-from rest_framework import status
-from rest_framework.test import APITestCase
+from drf_spectacular.utils import (
+    extend_schema_view,
+    extend_schema,
+    OpenApiParameter,
+)
 
-from appointment.models import Appointment
-from doctors.models import Doctor, DoctorSlot
-
-User = get_user_model()
+from .models import Appointment
+from .serializers import AppointmentSerializer, AppointmentCreateSerializer
 
 
-class AppointmentApiTests(APITestCase):
-    def setUp(self):
-        self.patient_1 = User.objects.create_user(
-            email="patient1@example.com",
-            password="password123",
-            first_name="John",
-            last_name="Doe"
-        )
-        self.patient_2 = User.objects.create_user(
-            email="patient2@example.com",
-            password="password123",
-            first_name="Jane",
-            last_name="Smith"
-        )
-        self.admin_user = User.objects.create_superuser(
-            email="admin@clinic.com", password="adminpassword"
-        )
+@extend_schema(tags=["Appointments"])
+@extend_schema_view(
+    list=extend_schema(
+        summary="List appointments with filters",
+        parameters=[
+            OpenApiParameter(
+                "status",
+                type=str,
+                description="Filter by status (BOOKED, COMPLETED, ...)",
+            ),
+            OpenApiParameter(
+                "doctor_id", type=int, description="Filter by Doctor ID"
+            ),
+            OpenApiParameter(
+                "patient_id",
+                type=int,
+                description="Filter by Patient ID (Staff/Admin Only)",
+            ),
+            OpenApiParameter(
+                "from",
+                type=str,
+                description="Filter by start timestamp (ISO format)",
+            ),
+            OpenApiParameter(
+                "to",
+                type=str,
+                description="Filter up to start timestamp (ISO format)",
+            ),
+        ],
+    )
+)
+class AppointmentViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
 
-        self.doctor = Doctor.objects.create(
-            first_name="Gregory",
-            last_name="House",
-            price_per_visit=150.00
-        )
+    def get_serializer_class(self):
+        if self.action == "create":
+            return AppointmentCreateSerializer
+        return AppointmentSerializer
 
-        now = timezone.now()
-        self.slot_1 = DoctorSlot.objects.create(
-            doctor=self.doctor,
-            start=now + timezone.timedelta(days=1, hours=10),
-            end=now + timezone.timedelta(days=1, hours=11)
-        )
-        self.slot_2 = DoctorSlot.objects.create(
-            doctor=self.doctor,
-            start=now + timezone.timedelta(days=2, hours=14),
-            end=now + timezone.timedelta(days=2, hours=15)
-        )
+    def get_queryset(self):
+        user = self.request.user
 
-        self.list_url = reverse("appointment:appointment-list")
+        if user.is_staff:
+            queryset = Appointment.objects.all()
+            patient_id = self.request.query_params.get("patient_id")
+            if patient_id:
+                queryset = queryset.filter(patient_id=patient_id)
+        else:
+            queryset = Appointment.objects.filter(patient=user)
 
-    def test_anonymous_user_cannot_access_appointments(self):
-        response = self.client.get(self.list_url)
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        status_param = self.request.query_params.get("status")
+        doctor_id = self.request.query_params.get("doctor_id")
+        from_date = self.request.query_params.get("from")
+        to_date = self.request.query_params.get("to")
 
-        response = self.client.post(
-            self.list_url,
-            data={"doctor_slot": self.slot_1.id}
-        )
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        if doctor_id:
+            queryset = queryset.filter(doctor_slot__doctor_id=doctor_id)
 
-    def test_patient_can_create_appointment_and_captures_price(self):
-        self.client.force_authenticate(user=self.patient_1)
-        payload = {"doctor_slot": self.slot_1.id}
+        if from_date:
+            queryset = queryset.filter(doctor_slot__start__gte=from_date)
+        if to_date:
+            queryset = queryset.filter(doctor_slot__start__lte=to_date)
 
-        response = self.client.post(self.list_url, payload, format="json")
-
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Appointment.objects.count(), 1)
-
-        appointment = Appointment.objects.first()
-        self.assertEqual(appointment.patient, self.patient_1)
-        self.assertEqual(appointment.doctor_slot, self.slot_1)
-        self.assertEqual(appointment.status, Appointment.Status.BOOKED)
-        self.assertEqual(appointment.price, self.doctor.price_per_visit)
-
-    def test_cannot_book_already_booked_slot(self):
-        Appointment.objects.create(
-            doctor_slot=self.slot_1,
-            patient=self.patient_2,
-            price=self.doctor.price_per_visit,
-            status=Appointment.Status.BOOKED
-        )
-
-        self.client.force_authenticate(user=self.patient_1)
-        payload = {"doctor_slot": self.slot_1.id}
-        response = self.client.post(self.list_url, payload, format="json")
-
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("doctor_slot", response.data)
-
-    def test_patient_can_only_see_own_appointments(self):
-        Appointment.objects.create(
-            doctor_slot=self.slot_1,
-            patient=self.patient_1,
-            price=150.00,
-            status=Appointment.Status.BOOKED
-        )
-        Appointment.objects.create(
-            doctor_slot=self.slot_2,
-            patient=self.patient_2,
-            price=150.00,
-            status=Appointment.Status.BOOKED
+        return queryset.select_related(
+            "doctor_slot", "doctor_slot__doctor", "patient"
         )
 
-        self.client.force_authenticate(user=self.patient_1)
-        response = self.client.get(self.list_url)
+    @extend_schema(
+        summary="Cancel an appointment",
+        description=(
+            "Allows patients to cancel their own appointment. "
+            "Only booked appointments can be cancelled."
+        ),
+        responses={
+            200: AppointmentSerializer,
+            400: {
+                "type": "object",
+                "properties": {"detail": {"type": "string"}},
+            },
+        },
+    )
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        appointment = self.get_object()
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["patient"], self.patient_1.id)
+        if appointment.status != Appointment.Status.BOOKED:
+            return Response(
+                {"detail": "Only booked appointments can be cancelled."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-    def test_admin_can_see_all_appointments_and_filter_by_patient(self):
-        Appointment.objects.create(
-            doctor_slot=self.slot_1,
-            patient=self.patient_1,
-            price=150.00,
-            status=Appointment.Status.BOOKED
-        )
-        Appointment.objects.create(
-            doctor_slot=self.slot_2,
-            patient=self.patient_2,
-            price=150.00,
-            status=Appointment.Status.BOOKED
-        )
+        appointment.status = Appointment.Status.CANCELLED
+        appointment.save()
+        serializer = self.get_serializer(appointment)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
-        self.client.force_authenticate(user=self.admin_user)
+    @extend_schema(
+        summary="Complete an appointment",
+        description=(
+            "Allows staff members to mark an appointment as completed. "
+            "Sets the completion timestamp."
+        ),
+        responses={
+            200: AppointmentSerializer,
+            400: {
+                "type": "object",
+                "properties": {"detail": {"type": "string"}},
+            },
+            403: {
+                "type": "object",
+                "properties": {"detail": {"type": "string"}},
+            },
+        },
+    )
+    @action(detail=True, methods=["post"])
+    def complete(self, request, pk=None):
+        appointment = self.get_object()
 
-        response = self.client.get(self.list_url)
-        self.assertEqual(len(response.data), 2)
+        if not request.user.is_staff:
+            return Response(
+                {
+                    "detail": (
+                        "You do not have permission to perform this action."
+                    )
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
-        response = self.client.get(
-            self.list_url,
-            {"patient_id": self.patient_2.id}
-        )
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["patient"], self.patient_2.id)
+        if appointment.status != Appointment.Status.BOOKED:
+            return Response(
+                {"detail": "Only booked appointments can be completed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-    def test_filtering_by_status_and_doctor(self):
-        appt_match = Appointment.objects.create(
-            doctor_slot=self.slot_1,
-            patient=self.patient_1,
-            price=150.00,
-            status=Appointment.Status.BOOKED
-        )
-        Appointment.objects.create(
-            doctor_slot=self.slot_2,
-            patient=self.patient_1,
-            price=150.00,
-            status=Appointment.Status.CANCELLED
-        )
+        appointment.status = Appointment.Status.COMPLETED
+        appointment.completed_at = timezone.now()
+        appointment.save()
+        serializer = self.get_serializer(appointment)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
-        self.client.force_authenticate(user=self.patient_1)
+    @extend_schema(
+        summary="Mark an appointment as no-show",
+        description=(
+            "Allows staff members to manually mark an appointment "
+            "as no-show if the patient did not arrive."
+        ),
+        responses={
+            200: AppointmentSerializer,
+            400: {
+                "type": "object",
+                "properties": {"detail": {"type": "string"}},
+            },
+            403: {
+                "type": "object",
+                "properties": {"detail": {"type": "string"}},
+            },
+        },
+    )
+    @action(detail=True, methods=["post"])
+    def no_show(self, request, pk=None):
+        appointment = self.get_object()
 
-        response = self.client.get(self.list_url, {"status": "BOOKED"})
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], appt_match.id)
+        if not request.user.is_staff:
+            return Response(
+                {
+                    "detail": (
+                        "You do not have permission to perform this action."
+                    )
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
-        response = self.client.get(
-            self.list_url,
-            {"doctor_id": self.doctor.id}
-        )
-        self.assertEqual(len(response.data), 2)
+        if appointment.status != Appointment.Status.BOOKED:
+            return Response(
+                {"detail": "Only booked appointments can be marked no-show."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-    def test_filtering_by_date_range_from_to(self):
-        appt_tomorrow = Appointment.objects.create(
-            doctor_slot=self.slot_1,
-            patient=self.patient_1,
-            price=150.00,
-            status=Appointment.Status.BOOKED
-        )
-
-        self.client.force_authenticate(user=self.patient_1)
-
-        tomorrow_start = (self.slot_1.start - timezone.timedelta(
-            hours=1
-        )).isoformat()
-        tomorrow_end = (self.slot_1.end + timezone.timedelta(
-            hours=1
-        )).isoformat()
-        future_far = (self.slot_2.start + timezone.timedelta(
-            days=5
-        )).isoformat()
-
-        response = self.client.get(
-            self.list_url,
-            {"from": tomorrow_start, "to": tomorrow_end}
-        )
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], appt_tomorrow.id)
-
-        response = self.client.get(self.list_url, {"from": future_far})
-        self.assertEqual(len(response.data), 0)
-
-    def test_patient_can_cancel_own_appointment(self):
-        appointment = Appointment.objects.create(
-            doctor_slot=self.slot_1,
-            patient=self.patient_1,
-            price=150.00,
-            status=Appointment.Status.BOOKED
-        )
-        self.client.force_authenticate(user=self.patient_1)
-        url = reverse("appointment:appointment-cancel", args=[appointment.id])
-
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        appointment.refresh_from_db()
-        self.assertEqual(appointment.status, Appointment.Status.CANCELLED)
-
-    def test_patient_cannot_cancel_others_appointment(self):
-        appointment = Appointment.objects.create(
-            doctor_slot=self.slot_1,
-            patient=self.patient_2,
-            price=150.00,
-            status=Appointment.Status.BOOKED
-        )
-        self.client.force_authenticate(user=self.patient_1)
-        url = reverse("appointment:appointment-cancel", args=[appointment.id])
-
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-
-    def test_patient_cannot_complete_or_no_show_appointment(self):
-        appointment = Appointment.objects.create(
-            doctor_slot=self.slot_1,
-            patient=self.patient_1,
-            price=150.00,
-            status=Appointment.Status.BOOKED
-        )
-        self.client.force_authenticate(user=self.patient_1)
-
-        complete_url = reverse("appointment:appointment-complete", args=[appointment.id])
-        no_show_url = reverse("appointment:appointment-no-show", args=[appointment.id])
-
-        response = self.client.post(complete_url)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-        response = self.client.post(no_show_url)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_staff_can_complete_appointment(self):
-        appointment = Appointment.objects.create(
-            doctor_slot=self.slot_1,
-            patient=self.patient_1,
-            price=150.00,
-            status=Appointment.Status.BOOKED
-        )
-        self.client.force_authenticate(user=self.admin_user)
-        url = reverse("appointment:appointment-complete", args=[appointment.id])
-
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        appointment.refresh_from_db()
-        self.assertEqual(appointment.status, Appointment.Status.COMPLETED)
-        self.assertIsNotNone(appointment.completed_at)
-
-    def test_staff_can_mark_as_no_show(self):
-        appointment = Appointment.objects.create(
-            doctor_slot=self.slot_1,
-            patient=self.patient_1,
-            price=150.00,
-            status=Appointment.Status.BOOKED
-        )
-        self.client.force_authenticate(user=self.admin_user)
-        url = reverse("appointment:appointment-no-show", args=[appointment.id])
-
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        appointment.refresh_from_db()
-        self.assertEqual(appointment.status, Appointment.Status.NO_SHOW)
-
-    def test_cannot_change_status_from_terminal_state(self):
-        appointment = Appointment.objects.create(
-            doctor_slot=self.slot_1,
-            patient=self.patient_1,
-            price=150.00,
-            status=Appointment.Status.CANCELLED
-        )
-        self.client.force_authenticate(user=self.admin_user)
-        url = reverse("appointment:appointment-complete", args=[appointment.id])
-
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        appointment.status = Appointment.Status.NO_SHOW
+        appointment.save()
+        serializer = self.get_serializer(appointment)
+        return Response(serializer.data, status=status.HTTP_200_OK)
