@@ -41,6 +41,39 @@ class PaymentViewSet(ReadOnlyModelViewSet):
         return queryset
 
 
+@extend_schema(
+    tags=["Payments"],
+    summary="Stripe payment success",
+    description=(
+        "Stripe redirects here after a successful checkout. "
+        "Verifies the session status via the Stripe API and marks "
+        "the Payment record as PAID."
+    ),
+    parameters=[
+        OpenApiParameter(
+            "session_id",
+            type=str,
+            location=OpenApiParameter.QUERY,
+            description=(
+                "Stripe Checkout Session ID — appended automatically "
+                "by Stripe via the {CHECKOUT_SESSION_ID} template variable."
+            ),
+            required=True,
+        )
+    ],
+    responses={
+        200: {
+            "type": "object",
+            "properties": {
+                "detail": {"type": "string"},
+                "payment_id": {"type": "integer"},
+                "status": {"type": "string"},
+            },
+        },
+        400: {"type": "object", "properties": {"detail": {"type": "string"}}},
+        404: {"type": "object", "properties": {"detail": {"type": "string"}}},
+    },
+)
 class PaymentSuccessView(APIView):
     permission_classes = [AllowAny]
 
@@ -88,6 +121,33 @@ class PaymentSuccessView(APIView):
         )
 
 
+@extend_schema(
+    tags=["Payments"],
+    summary="Stripe payment cancelled / paused",
+    description=(
+        "Stripe redirects here when the customer closes the checkout page. "
+        "The session remains open for 24 hours, so the patient can retry "
+        "payment using the original session_url."
+    ),
+    parameters=[
+        OpenApiParameter(
+            "session_id",
+            type=str,
+            location=OpenApiParameter.QUERY,
+            description="Stripe Checkout Session ID (optional).",
+            required=False,
+        )
+    ],
+    responses={
+        200: {
+            "type": "object",
+            "properties": {
+                "detail": {"type": "string"},
+                "session_url": {"type": "string"},
+            },
+        },
+    },
+)
 class PaymentCancelView(APIView):
     permission_classes = [AllowAny]
 
