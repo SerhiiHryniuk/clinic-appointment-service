@@ -1,5 +1,5 @@
 from rest_framework import generics, permissions
-from drf_spectacular.utils import extend_schema  # 1. Import the decorator
+from drf_spectacular.utils import extend_schema
 from users.serializers import UserSerializer
 
 
