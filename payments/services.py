@@ -39,18 +39,18 @@ def create_payment_session(appointment, payment_type: str, request=None):
         success_url = (
             request.build_absolute_uri(
                 reverse("payments:payment-success")
-            )
-            + "?session_id={CHECKOUT_SESSION_ID}"
+            ) + "?session_id={CHECKOUT_SESSION_ID}"
         )
         cancel_url = (
             request.build_absolute_uri(
                 reverse("payments:payment-cancel")
-            )
-            + "?session_id={CHECKOUT_SESSION_ID}"
+            ) + "?session_id={CHECKOUT_SESSION_ID}"
         )
     else:
-        success_url = "https://example.com/success/?session_id={CHECKOUT_SESSION_ID}"
-        cancel_url = "https://example.com/cancel/?session_id={CHECKOUT_SESSION_ID}"
+        success_url = ("https://example.com/success/"
+                       "?session_id={CHECKOUT_SESSION_ID}")
+        cancel_url = ("https://example.com/cancel/"
+                      "?session_id={CHECKOUT_SESSION_ID}")
 
     session = stripe.checkout.Session.create(
         mode="payment",
