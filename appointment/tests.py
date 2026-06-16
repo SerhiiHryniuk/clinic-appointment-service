@@ -190,3 +190,103 @@ class AppointmentApiTests(APITestCase):
 
         response = self.client.get(self.list_url, {"from": future_far})
         self.assertEqual(len(response.data), 0)
+
+    def test_patient_can_cancel_own_appointment(self):
+        appointment = Appointment.objects.create(
+            doctor_slot=self.slot_1,
+            patient=self.patient_1,
+            price=150.00,
+            status=Appointment.Status.BOOKED
+        )
+        self.client.force_authenticate(user=self.patient_1)
+        url = reverse("appointment:appointment-cancel", args=[appointment.id])
+
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, Appointment.Status.CANCELLED)
+
+    def test_patient_cannot_cancel_others_appointment(self):
+        appointment = Appointment.objects.create(
+            doctor_slot=self.slot_1,
+            patient=self.patient_2,
+            price=150.00,
+            status=Appointment.Status.BOOKED
+        )
+        self.client.force_authenticate(user=self.patient_1)
+        url = reverse("appointment:appointment-cancel", args=[appointment.id])
+
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_patient_cannot_complete_or_no_show_appointment(self):
+        appointment = Appointment.objects.create(
+            doctor_slot=self.slot_1,
+            patient=self.patient_1,
+            price=150.00,
+            status=Appointment.Status.BOOKED
+        )
+        self.client.force_authenticate(user=self.patient_1)
+
+        comp_url = reverse(
+            "appointment:appointment-complete", args=[appointment.id]
+        )
+        ns_url = reverse(
+            "appointment:appointment-no-show", args=[appointment.id]
+        )
+
+        response = self.client.post(comp_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        response = self.client.post(ns_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_staff_can_complete_appointment(self):
+        appointment = Appointment.objects.create(
+            doctor_slot=self.slot_1,
+            patient=self.patient_1,
+            price=150.00,
+            status=Appointment.Status.BOOKED
+        )
+        self.client.force_authenticate(user=self.admin_user)
+        url = reverse(
+            "appointment:appointment-complete", args=[appointment.id]
+        )
+
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, Appointment.Status.COMPLETED)
+        self.assertIsNotNone(appointment.completed_at)
+
+    def test_staff_can_mark_as_no_show(self):
+        appointment = Appointment.objects.create(
+            doctor_slot=self.slot_1,
+            patient=self.patient_1,
+            price=150.00,
+            status=Appointment.Status.BOOKED
+        )
+        self.client.force_authenticate(user=self.admin_user)
+        url = reverse(
+            "appointment:appointment-no-show", args=[appointment.id]
+        )
+
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, Appointment.Status.NO_SHOW)
+
+    def test_cannot_change_status_from_terminal_state(self):
+        appointment = Appointment.objects.create(
+            doctor_slot=self.slot_1,
+            patient=self.patient_1,
+            price=150.00,
+            status=Appointment.Status.CANCELLED
+        )
+        self.client.force_authenticate(user=self.admin_user)
+        url = reverse(
+            "appointment:appointment-complete", args=[appointment.id]
+        )
+
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
