@@ -102,7 +102,7 @@ class DoctorViewSet(viewsets.ModelViewSet):
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
                 description="Pass 'true' to return only slots "
-                            "with no booked appointment",
+                            "with no booked appointments",
                 required=False,
                 enum=["true", "false"],
             ),
@@ -125,7 +125,7 @@ class DoctorViewSet(viewsets.ModelViewSet):
         tags=["Doctor Slots"],
     ),
     destroy=extend_schema(
-        summary="Delete a slot if no appointment exists (Admin Only)",
+        summary="Delete a slot if no appointments exists (Admin Only)",
         tags=["Doctor Slots"],
     ),
 )
@@ -143,7 +143,7 @@ class DoctorSlotViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(end__lte=end)
         if available_only == "true":
             queryset = queryset.filter(
-                appointment__isnull=True
+                appointments__isnull=True
             )
 
         return queryset
@@ -158,11 +158,11 @@ class DoctorSlotViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         slot = self.get_object()
-        if hasattr(slot, "appointment") and slot.appointment is not None:
+        if hasattr(slot, "appointments") and slot.appointments is not None:
             return Response(
                 {
                     "detail": "Cannot delete a slot with "
-                              "an existing appointment."
+                              "an existing appointments."
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -193,7 +193,7 @@ class DoctorSlotViewSet(viewsets.ModelViewSet):
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
                 description="Pass 'true' to return only slots "
-                            "with no booked appointment",
+                            "with no booked appointments",
                 required=False,
                 enum=["true", "false"],
             ),
@@ -265,7 +265,7 @@ class DoctorSlotBulkCreateView(generics.GenericAPIView):
         if end:
             queryset = queryset.filter(end__lte=end)
         if available_only == "true":
-            queryset = queryset.filter(appointment__isnull=True)
+            queryset = queryset.filter(appointments__isnull=True)
         serializer = DoctorSlotListSerializer(queryset, many=True)
 
         return Response(serializer.data)
