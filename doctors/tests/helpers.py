@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from rest_framework.test import APITestCase
 
 from doctors.models import Doctor, DoctorSlot
 from specializations.models import Specialization
@@ -36,22 +36,22 @@ def make_slot(doctor, start_hour=9, end_hour=10, day=1):
     )
 
 
-class BaseAPITest(TestCase):
+class BaseAPITest(APITestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser(
-            username="admin", password="admin123"
+            email="admin@admin.com", password="admin123"
         )
         self.user = User.objects.create_user(
-            username="user", password="user123"
+            email="user@user.com", password="user123"
         )
         self.spec = make_specialization()
         self.doctor = make_doctor(specs=[self.spec])
 
     def as_admin(self):
-        self.client.force_login(self.admin)
+        self.client.force_authenticate(user=self.admin)
 
     def as_user(self):
-        self.client.force_login(self.user)
+        self.client.force_authenticate(user=self.user)
 
     def as_anon(self):
         self.client.logout()
