@@ -47,8 +47,8 @@ class Appointment(models.Model):
         from notifications.tasks import send_telegram_message_task
 
         if is_created:
-            start_time = self.doctor_slot.start.strftime('%d.%m.%Y %H:%M')
-            end_time = self.doctor_slot.end.strftime('%H:%M')
+            start_time = self.doctor_slot.start.strftime("%d.%m.%Y %H:%M")
+            end_time = self.doctor_slot.end.strftime("%H:%M")
             message = (
                 f"📅 <b>New Appointment!</b>\n"
                 f"Patient: {self.patient.email}\n"
@@ -70,8 +70,6 @@ class Appointment(models.Model):
 
     def is_late_cancellation(self) -> bool:
         time_until_start = self.doctor_slot.start - timezone.now()
-        return (
-            timezone.timedelta(0)
-            < time_until_start
-            < timezone.timedelta(hours=24)
-        )
+        is_after_zero = timezone.timedelta(0) < time_until_start
+        is_under_24h = time_until_start < timezone.timedelta(hours=24)
+        return is_after_zero and is_under_24h
