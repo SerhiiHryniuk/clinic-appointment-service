@@ -12,7 +12,7 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY" ,"django-insecure-j2wlmn1z5whl_3ezx0d
 
 DEBUG = os.getenv("DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["web", "localhost", "127.0.0.1"]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -113,7 +113,8 @@ SPECTACULAR_SETTINGS = {
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", None)
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", None)
-
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER", "redis://redis:6379/0")
 CELERY_RESULT_BACKEND = os.getenv("CELERY_BROKER", "redis://redis:6379/0")
 CELERY_TIMEZONE = TIME_ZONE
