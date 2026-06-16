@@ -13,10 +13,16 @@ User = get_user_model()
 class AppointmentApiTests(APITestCase):
     def setUp(self):
         self.patient_1 = User.objects.create_user(
-            email="patient1@example.com", password="password123", first_name="John", last_name="Doe"
+            email="patient1@example.com",
+            password="password123",
+            first_name="John",
+            last_name="Doe"
         )
         self.patient_2 = User.objects.create_user(
-            email="patient2@example.com", password="password123", first_name="Jane", last_name="Smith"
+            email="patient2@example.com",
+            password="password123",
+            first_name="Jane",
+            last_name="Smith"
         )
         self.admin_user = User.objects.create_superuser(
             email="admin@clinic.com", password="adminpassword"
@@ -46,7 +52,10 @@ class AppointmentApiTests(APITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-        response = self.client.post(self.list_url, data={"doctor_slot": self.slot_1.id})
+        response = self.client.post(
+            self.list_url,
+            data={"doctor_slot": self.slot_1.id}
+        )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_patient_can_create_appointment_and_captures_price(self):
@@ -81,10 +90,16 @@ class AppointmentApiTests(APITestCase):
 
     def test_patient_can_only_see_own_appointments(self):
         Appointment.objects.create(
-            doctor_slot=self.slot_1, patient=self.patient_1, price=150.00, status=Appointment.Status.BOOKED
+            doctor_slot=self.slot_1,
+            patient=self.patient_1,
+            price=150.00,
+            status=Appointment.Status.BOOKED
         )
         Appointment.objects.create(
-            doctor_slot=self.slot_2, patient=self.patient_2, price=150.00, status=Appointment.Status.BOOKED
+            doctor_slot=self.slot_2,
+            patient=self.patient_2,
+            price=150.00,
+            status=Appointment.Status.BOOKED
         )
 
         self.client.force_authenticate(user=self.patient_1)
@@ -96,10 +111,16 @@ class AppointmentApiTests(APITestCase):
 
     def test_admin_can_see_all_appointments_and_filter_by_patient(self):
         Appointment.objects.create(
-            doctor_slot=self.slot_1, patient=self.patient_1, price=150.00, status=Appointment.Status.BOOKED
+            doctor_slot=self.slot_1,
+            patient=self.patient_1,
+            price=150.00,
+            status=Appointment.Status.BOOKED
         )
         Appointment.objects.create(
-            doctor_slot=self.slot_2, patient=self.patient_2, price=150.00, status=Appointment.Status.BOOKED
+            doctor_slot=self.slot_2,
+            patient=self.patient_2,
+            price=150.00,
+            status=Appointment.Status.BOOKED
         )
 
         self.client.force_authenticate(user=self.admin_user)
@@ -107,16 +128,25 @@ class AppointmentApiTests(APITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(len(response.data), 2)
 
-        response = self.client.get(self.list_url, {"patient_id": self.patient_2.id})
+        response = self.client.get(
+            self.list_url,
+            {"patient_id": self.patient_2.id}
+        )
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["patient"], self.patient_2.id)
 
     def test_filtering_by_status_and_doctor(self):
         appt_match = Appointment.objects.create(
-            doctor_slot=self.slot_1, patient=self.patient_1, price=150.00, status=Appointment.Status.BOOKED
+            doctor_slot=self.slot_1,
+            patient=self.patient_1,
+            price=150.00,
+            status=Appointment.Status.BOOKED
         )
         Appointment.objects.create(
-            doctor_slot=self.slot_2, patient=self.patient_1, price=150.00, status=Appointment.Status.CANCELLED
+            doctor_slot=self.slot_2,
+            patient=self.patient_1,
+            price=150.00,
+            status=Appointment.Status.CANCELLED
         )
 
         self.client.force_authenticate(user=self.patient_1)
@@ -125,21 +155,36 @@ class AppointmentApiTests(APITestCase):
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["id"], appt_match.id)
 
-        response = self.client.get(self.list_url, {"doctor_id": self.doctor.id})
+        response = self.client.get(
+            self.list_url,
+            {"doctor_id": self.doctor.id}
+        )
         self.assertEqual(len(response.data), 2)  # Both match this doctor
 
     def test_filtering_by_date_range_from_to(self):
         appt_tomorrow = Appointment.objects.create(
-            doctor_slot=self.slot_1, patient=self.patient_1, price=150.00, status=Appointment.Status.BOOKED
+            doctor_slot=self.slot_1,
+            patient=self.patient_1,
+            price=150.00,
+            status=Appointment.Status.BOOKED
         )
 
         self.client.force_authenticate(user=self.patient_1)
 
-        tomorrow_start = (self.slot_1.start - timezone.timedelta(hours=1)).isoformat()
-        tomorrow_end = (self.slot_1.end + timezone.timedelta(hours=1)).isoformat()
-        future_far = (self.slot_2.start + timezone.timedelta(days=5)).isoformat()
+        tomorrow_start = (self.slot_1.start - timezone.timedelta(
+            hours=1
+        )).isoformat()
+        tomorrow_end = (self.slot_1.end + timezone.timedelta(
+            hours=1
+        )).isoformat()
+        future_far = (self.slot_2.start + timezone.timedelta(
+            days=5
+        )).isoformat()
 
-        response = self.client.get(self.list_url, {"from": tomorrow_start, "to": tomorrow_end})
+        response = self.client.get(
+            self.list_url,
+            {"from": tomorrow_start, "to": tomorrow_end}
+        )
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["id"], appt_tomorrow.id)
 

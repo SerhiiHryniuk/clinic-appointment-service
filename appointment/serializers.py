@@ -23,8 +23,13 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
         fields = ["doctor_slot"]
 
     def validate_doctor_slot(self, value):
-        if Appointment.objects.filter(doctor_slot=value, status=Appointment.Status.BOOKED).exists():
-            raise serializers.ValidationError("This doctor slot has already been booked.")
+        if Appointment.objects.filter(
+                doctor_slot=value,
+                status=Appointment.Status.BOOKED
+        ).exists():
+            raise serializers.ValidationError(
+                "This doctor slot has already been booked."
+            )
         return value
 
     def create(self, validated_data):

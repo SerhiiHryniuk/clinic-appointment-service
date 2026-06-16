@@ -1,9 +1,16 @@
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
-from drf_spectacular.utils import extend_schema_view, extend_schema, OpenApiParameter
+from drf_spectacular.utils import (
+    extend_schema_view,
+    extend_schema,
+    OpenApiParameter
+)
 
 from .models import Appointment
-from .serializers import AppointmentSerializer, AppointmentCreateSerializer
+from .serializers import (
+    AppointmentSerializer,
+    AppointmentCreateSerializer
+)
 
 
 @extend_schema(tags=["Appointments"])
@@ -11,14 +18,33 @@ from .serializers import AppointmentSerializer, AppointmentCreateSerializer
     list=extend_schema(
         summary="List appointments with filters",
         parameters=[
-            OpenApiParameter("status", type=str,
-                             description="Filter by status (BOOKED, COMPLETED, CANCELLED, NO_SHOW)"),
-            OpenApiParameter("doctor_id", type=int, description="Filter by Doctor ID"),
-            OpenApiParameter("patient_id", type=int, description="Filter by Patient ID (Staff/Admin Only)"),
-            OpenApiParameter("from", type=str,
-                             description="Filter appointments starting from this timestamp (ISO format)"),
-            OpenApiParameter("to", type=str,
-                             description="Filter appointments starting up to this timestamp (ISO format)"),
+            OpenApiParameter("status",
+                             type=str,
+                             description="Filter by status ("
+                                         "BOOKED, "
+                                         "COMPLETED, "
+                                         "CANCELLED, "
+                                         "NO_SHOW)"
+                             ),
+            OpenApiParameter("doctor_id",
+                             type=int,
+                             description="Filter by Doctor ID"
+                             ),
+            OpenApiParameter("patient_id",
+                             type=int,
+                             description="Filter by Patient ID "
+                                         "(Staff/Admin Only)"
+                             ),
+            OpenApiParameter("from",
+                             type=str,
+                             description="Filter appointments starting "
+                                         "from this timestamp (ISO format)"
+                             ),
+            OpenApiParameter("to",
+                             type=str,
+                             description="Filter appointments starting up "
+                                         "to this timestamp (ISO format)"
+                             ),
         ]
     )
 )
@@ -56,4 +82,8 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         if to_date:
             queryset = queryset.filter(doctor_slot__start__lte=to_date)
 
-        return queryset.select_related("doctor_slot", "doctor_slot__doctor", "patient")
+        return queryset.select_related(
+            "doctor_slot",
+            "doctor_slot__doctor",
+            "patient"
+        )

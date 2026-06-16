@@ -32,4 +32,5 @@ class Appointment(models.Model):
         ordering = ["-booked_at"]
 
     def __str__(self):
-        return f"Appointment {self.id} ({self.status}) - Patient: {self.patient.email}"
+        return (f"Appointment {self.id} ({self.status}) - "
+                f"Patient: {self.patient.email}")
