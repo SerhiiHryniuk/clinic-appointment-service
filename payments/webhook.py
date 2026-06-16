@@ -5,6 +5,7 @@ from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from notifications.tasks import send_telegram_message_task
 from payments.models import Payment
 
 
@@ -31,10 +32,21 @@ def stripe_webhook(request):
 
     if event["type"] == "checkout.session.completed":
         with transaction.atomic():
-            Payment.objects.select_for_update().filter(
+            payments = Payment.objects.select_for_update().filter(
                 session_id=session_id,
                 status=Payment.Status.PENDING,
-            ).update(status=Payment.Status.PAID)
+            )
+
+            for payment in payments:
+                payment.status = Payment.Status.PAID
+                payment.save()
+
+                message = (
+                    f"✅ <b>Payment successful!</b>\n"
+                    f"Appointment ID: #{payment.appointment_id}\n"
+                    f"Amount: {payment.money_to_pay} USD"
+                )
+                send_telegram_message_task.delay(message)
 
     elif event["type"] == "checkout.session.expired":
         with transaction.atomic():
