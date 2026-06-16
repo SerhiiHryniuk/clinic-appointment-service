@@ -1,5 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
@@ -9,6 +10,8 @@ from drf_spectacular.utils import (
     OpenApiParameter,
 )
 
+from payments.models import Payment
+from payments.services import create_payment_session
 from .models import Appointment
 from .serializers import AppointmentSerializer, AppointmentCreateSerializer
 
@@ -80,7 +83,13 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
         return queryset.select_related(
             "doctor_slot", "doctor_slot__doctor", "patient"
-        )
+        ).prefetch_related("payments")
+
+    def get_object(self):
+        queryset = self.get_queryset()  # вже має prefetch_related
+        obj = get_object_or_404(queryset, pk=self.kwargs["pk"])
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     @extend_schema(
         summary="Cancel an appointment",
@@ -109,6 +118,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
         appointment.status = Appointment.Status.CANCELLED
         appointment.save()
+        create_payment_session(appointment, Payment.Type.CANCELLATION_FEE)
         serializer = self.get_serializer(appointment)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -153,6 +163,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         appointment.status = Appointment.Status.COMPLETED
         appointment.completed_at = timezone.now()
         appointment.save()
+        create_payment_session(appointment, Payment.Type.CONSULTATION)
         serializer = self.get_serializer(appointment)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -200,5 +211,6 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
         appointment.status = Appointment.Status.NO_SHOW
         appointment.save()
+        create_payment_session(appointment, Payment.Type.NO_SHOW_FEE)
         serializer = self.get_serializer(appointment)
         return Response(serializer.data, status=status.HTTP_200_OK)

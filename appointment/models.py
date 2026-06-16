@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 
 class Appointment(models.Model):
@@ -34,3 +35,11 @@ class Appointment(models.Model):
     def __str__(self):
         return (f"Appointment {self.id} ({self.status}) - "
                 f"Patient: {self.patient.email}")
+
+    def is_late_cancellation(self) -> bool:
+        time_until_start = self.doctor_slot.start - timezone.now()
+        return timezone.timedelta(
+            0
+        ) < time_until_start < timezone.timedelta(
+            hours=24
+        )

@@ -32,5 +32,15 @@ services:
         db:
           condition: service_healthy
 
+  stripe-cli:
+    image: stripe/stripe-cli
+    container_name: clinic_stripe_cli
+    command: listen --forward-to web:8000/api/v1/webhooks/stripe/
+    environment:
+      - STRIPE_API_KEY=${STRIPE_SECRET_KEY}
+    depends_on:
+      - web
+    restart: on-failure
+
 volumes:
   postgres_data:
