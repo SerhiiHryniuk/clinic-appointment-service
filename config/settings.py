@@ -25,8 +25,8 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "specializations",
     "doctors",
-    "users",
     "appointment",
+    "users",
 ]
 
 MIDDLEWARE = [
@@ -85,6 +85,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+
 LANGUAGE_CODE = "en-us"
 
 TIME_ZONE = "UTC"
@@ -108,6 +109,14 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
+
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", None)
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", None)
+
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER", "redis://redis:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_BROKER", "redis://redis:6379/0")
+CELERY_TIMEZONE = TIME_ZONE
+
 
 AUTH_USER_MODEL = "users.User"
 

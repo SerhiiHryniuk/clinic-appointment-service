@@ -1,16 +1,12 @@
-from rest_framework import viewsets
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from drf_spectacular.utils import (
-    extend_schema_view,
-    extend_schema,
-    OpenApiParameter
-)
+from django.utils import timezone
+from drf_spectacular.utils import extend_schema_view, extend_schema, OpenApiParameter
 
 from .models import Appointment
-from .serializers import (
-    AppointmentSerializer,
-    AppointmentCreateSerializer
-)
+from .serializers import AppointmentSerializer, AppointmentCreateSerializer
 
 
 @extend_schema(tags=["Appointments"])
@@ -18,33 +14,14 @@ from .serializers import (
     list=extend_schema(
         summary="List appointments with filters",
         parameters=[
-            OpenApiParameter("status",
-                             type=str,
-                             description="Filter by status ("
-                                         "BOOKED, "
-                                         "COMPLETED, "
-                                         "CANCELLED, "
-                                         "NO_SHOW)"
-                             ),
-            OpenApiParameter("doctor_id",
-                             type=int,
-                             description="Filter by Doctor ID"
-                             ),
-            OpenApiParameter("patient_id",
-                             type=int,
-                             description="Filter by Patient ID "
-                                         "(Staff/Admin Only)"
-                             ),
-            OpenApiParameter("from",
-                             type=str,
-                             description="Filter appointments starting "
-                                         "from this timestamp (ISO format)"
-                             ),
-            OpenApiParameter("to",
-                             type=str,
-                             description="Filter appointments starting up "
-                                         "to this timestamp (ISO format)"
-                             ),
+            OpenApiParameter("status", type=str,
+                             description="Filter by status (BOOKED, COMPLETED, CANCELLED, NO_SHOW)"),
+            OpenApiParameter("doctor_id", type=int, description="Filter by Doctor ID"),
+            OpenApiParameter("patient_id", type=int, description="Filter by Patient ID (Staff/Admin Only)"),
+            OpenApiParameter("from", type=str,
+                             description="Filter appointments starting from this timestamp (ISO format)"),
+            OpenApiParameter("to", type=str,
+                             description="Filter appointments starting up to this timestamp (ISO format)"),
         ]
     )
 )
@@ -67,13 +44,13 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         else:
             queryset = Appointment.objects.filter(patient=user)
 
-        status = self.request.query_params.get("status")
+        status_param = self.request.query_params.get("status")
         doctor_id = self.request.query_params.get("doctor_id")
         from_date = self.request.query_params.get("from")
         to_date = self.request.query_params.get("to")
 
-        if status:
-            queryset = queryset.filter(status=status)
+        if status_param:
+            queryset = queryset.filter(status=status_param)
         if doctor_id:
             queryset = queryset.filter(doctor_slot__doctor_id=doctor_id)
 
@@ -87,3 +64,87 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             "doctor_slot__doctor",
             "patient"
         )
+
+    @extend_schema(
+        summary="Cancel an appointment",
+        description="Allows patients to cancel their own appointment, or staff to cancel any appointment. Only booked appointments can be cancelled.",
+        responses={
+            200: AppointmentSerializer,
+            400: {"type": "object", "properties": {"detail": {"type": "string"}}}
+        }
+    )
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        appointment = self.get_object()
+
+        if appointment.status != Appointment.Status.BOOKED:
+            return Response(
+                {"detail": "Only booked appointments can be cancelled."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        appointment.status = Appointment.Status.CANCELLED
+        appointment.save()
+        serializer = self.get_serializer(appointment)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary="Complete an appointment",
+        description="Allows staff members to mark an appointment as completed. Sets the completion timestamp.",
+        responses={
+            200: AppointmentSerializer,
+            400: {"type": "object", "properties": {"detail": {"type": "string"}}},
+            403: {"type": "object", "properties": {"detail": {"type": "string"}}}
+        }
+    )
+    @action(detail=True, methods=["post"])
+    def complete(self, request, pk=None):
+        appointment = self.get_object()
+
+        if not request.user.is_staff:
+            return Response(
+                {"detail": "You do not have permission to perform this action."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if appointment.status != Appointment.Status.BOOKED:
+            return Response(
+                {"detail": "Only booked appointments can be completed."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        appointment.status = Appointment.Status.COMPLETED
+        appointment.completed_at = timezone.now()
+        appointment.save()
+        serializer = self.get_serializer(appointment)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary="Mark an appointment as no-show",
+        description="Allows staff members to manually mark an appointment as no-show if the patient did not arrive.",
+        responses={
+            200: AppointmentSerializer,
+            400: {"type": "object", "properties": {"detail": {"type": "string"}}},
+            403: {"type": "object", "properties": {"detail": {"type": "string"}}}
+        }
+    )
+    @action(detail=True, methods=["post"])
+    def no_show(self, request, pk=None):
+        appointment = self.get_object()
+
+        if not request.user.is_staff:
+            return Response(
+                {"detail": "You do not have permission to perform this action."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if appointment.status != Appointment.Status.BOOKED:
+            return Response(
+                {"detail": "Only booked appointments can be marked as no-show."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        appointment.status = Appointment.Status.NO_SHOW
+        appointment.save()
+        serializer = self.get_serializer(appointment)
+        return Response(serializer.data, status=status.HTTP_200_OK)
