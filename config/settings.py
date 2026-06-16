@@ -1,15 +1,13 @@
 import os
-import sys
 from pathlib import Path
-
+from celery.schedules import crontab
 from dotenv import load_dotenv
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY" ,"django-insecure-j2wlmn1z5whl_3ezx0d9znn3!ct+h6cez1d+*04sps4w!p%p@7")
-
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-j2wlmn1z5whl_3ezx0d9znn3!ct+h6cez1d+*04sps4w!p%p@7")
 DEBUG = os.getenv("DEBUG", "True") == "True"
 
 ALLOWED_HOSTS = ["web", "localhost", "127.0.0.1"]
@@ -27,6 +25,7 @@ INSTALLED_APPS = [
     "doctors",
     "appointment",
     "users",
+    "notifications",
     "payments",
 ]
 
@@ -45,8 +44,7 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": []
-        ,
+        "DIRS": [],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -72,27 +70,17 @@ DATABASES = {
 }
 
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
-    },
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+AUTH_USER_MODEL = "users.User"
 
 LANGUAGE_CODE = "en-us"
-
 TIME_ZONE = "UTC"
-
 USE_I18N = True
-
 USE_TZ = True
 
 STATIC_URL = "static/"
@@ -104,6 +92,10 @@ REST_FRAMEWORK = {
     ),
 }
 
+SIMPLE_JWT = {
+    "AUTH_HEADER_TYPES": ("Bearer",),
+}
+
 SPECTACULAR_SETTINGS = {
     "TITLE": "Clinic Appointment Service API",
     "DESCRIPTION": "API documentation.",
@@ -111,17 +103,20 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
 }
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", None)
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", None)
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-CELERY_BROKER_URL = os.getenv("CELERY_BROKER", "redis://redis:6379/0")
-CELERY_RESULT_BACKEND = os.getenv("CELERY_BROKER", "redis://redis:6379/0")
-CELERY_TIMEZONE = TIME_ZONE
 
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
+CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+CELERY_TIMEZONE = "UTC"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
 
-AUTH_USER_MODEL = "users.User"
-
-SIMPLE_JWT = {
-    "AUTH_HEADER_TYPES": ("Bearer",),
+CELERY_BEAT_SCHEDULE = {
+    "check-noshow-daily": {
+        "task": "notifications.tasks.check_and_mark_noshow_appointments_daily_task",
+        "schedule": crontab(hour=0, minute=0),
+    },
 }
