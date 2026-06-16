@@ -1,5 +1,4 @@
 import os
-import sys
 from pathlib import Path
 from celery.schedules import crontab
 from dotenv import load_dotenv
@@ -12,7 +11,6 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-j2wlmn1z5whl_3ezx0d
 DEBUG = os.getenv("DEBUG", "True") == "True"
 
 ALLOWED_HOSTS = ["web", "localhost", "127.0.0.1"]
-
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -81,11 +79,8 @@ AUTH_PASSWORD_VALIDATORS = [
 AUTH_USER_MODEL = "users.User"
 
 LANGUAGE_CODE = "en-us"
-
 TIME_ZONE = "UTC"
-
 USE_I18N = True
-
 USE_TZ = True
 
 STATIC_URL = "static/"
@@ -108,18 +103,14 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
 }
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", None)
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", None)
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-CELERY_BROKER_URL = os.getenv("CELERY_BROKER", "redis://redis:6379/0")
-CELERY_RESULT_BACKEND = os.getenv("CELERY_BROKER", "redis://redis:6379/0")
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "dummy_token")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "dummy_chat_id")
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
-CELERY_RESULT_BACKEND = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
-CELERY_TIMEZONE = TIME_ZONE
+CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+CELERY_TIMEZONE = "UTC"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 
