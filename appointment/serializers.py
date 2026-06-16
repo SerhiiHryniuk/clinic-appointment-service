@@ -1,8 +1,12 @@
 from rest_framework import serializers
+
+from payments.serializers import PaymentSerializer
 from .models import Appointment
 
 
 class AppointmentSerializer(serializers.ModelSerializer):
+    payments = PaymentSerializer(many=True, read_only=True)
+
     class Meta:
         model = Appointment
         fields = [
@@ -12,7 +16,8 @@ class AppointmentSerializer(serializers.ModelSerializer):
             "status",
             "booked_at",
             "completed_at",
-            "price"
+            "price",
+            "payments",
         ]
         read_only_fields = fields
 
