@@ -86,7 +86,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         ).prefetch_related("payments")
 
     def get_object(self):
-        queryset = self.get_queryset()  # вже має prefetch_related
+        queryset = self.get_queryset()
         obj = get_object_or_404(queryset, pk=self.kwargs["pk"])
         self.check_object_permissions(self.request, obj)
         return obj
@@ -118,7 +118,9 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
         appointment.status = Appointment.Status.CANCELLED
         appointment.save()
-        create_payment_session(appointment, Payment.Type.CANCELLATION_FEE)
+        create_payment_session(
+            appointment, Payment.Type.CANCELLATION_FEE, request=request
+        )
         serializer = self.get_serializer(appointment)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -163,7 +165,9 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         appointment.status = Appointment.Status.COMPLETED
         appointment.completed_at = timezone.now()
         appointment.save()
-        create_payment_session(appointment, Payment.Type.CONSULTATION)
+        create_payment_session(
+            appointment, Payment.Type.CONSULTATION, request=request
+        )
         serializer = self.get_serializer(appointment)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -211,6 +215,8 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
         appointment.status = Appointment.Status.NO_SHOW
         appointment.save()
-        create_payment_session(appointment, Payment.Type.NO_SHOW_FEE)
+        create_payment_session(
+            appointment, Payment.Type.NO_SHOW_FEE, request=request
+        )
         serializer = self.get_serializer(appointment)
         return Response(serializer.data, status=status.HTTP_200_OK)
