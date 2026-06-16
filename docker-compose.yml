@@ -17,20 +17,67 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: clinic_redis_broker
+    restart: always
+    ports:
+      - "6379:6379"
+
   web:
-      build: .
-      container_name: clinic_django_api
-      restart: always
-      command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
-      volumes:
-        - .:/app
-      ports:
-        - "8000:8000"
-      env_file:
-        - .env
-      depends_on:
-        db:
-          condition: service_healthy
+    build: .
+    container_name: clinic_django_api
+    restart: always
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  celery:
+    build: .
+    container_name: clinic_celery_worker
+    restart: always
+    command: celery -A config worker --loglevel=info
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  celery-beat:
+    build: .
+    container_name: clinic_celery_beat
+    restart: always
+    command: celery -A config beat --loglevel=info
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+  dashboard:
+    image: mher/flower:0.9.7
+    container_name: clinic_flower
+    command: celery flower --broker=redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
 
   stripe-cli:
     image: stripe/stripe-cli
