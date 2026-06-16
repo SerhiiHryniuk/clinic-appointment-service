@@ -159,7 +159,7 @@ class AppointmentApiTests(APITestCase):
             self.list_url,
             {"doctor_id": self.doctor.id}
         )
-        self.assertEqual(len(response.data), 2)  # Both match this doctor
+        self.assertEqual(len(response.data), 2)
 
     def test_filtering_by_date_range_from_to(self):
         appt_tomorrow = Appointment.objects.create(
