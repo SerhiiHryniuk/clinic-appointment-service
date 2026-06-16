@@ -38,4 +38,8 @@ class Appointment(models.Model):
 
     def is_late_cancellation(self) -> bool:
         time_until_start = self.doctor_slot.start - timezone.now()
-        return timezone.timedelta(0) < time_until_start < timezone.timedelta(hours=24)
+        return timezone.timedelta(
+            0
+        ) < time_until_start < timezone.timedelta(
+            hours=24
+        )
