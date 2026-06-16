@@ -15,10 +15,10 @@ class SpecializationAPITestCase(TestCase):
         self.client = APIClient()
 
         self.admin_user = User.objects.create_superuser(
-            username="admin", password="testpassword123"
+            email="admin@admin.com", password="testpassword123"
         )
         self.regular_user = User.objects.create_user(
-            username="regular", password="testpassword123"
+            email="user@user.com", password="testpassword123"
         )
 
         self.specialization = Specialization.objects.create(
@@ -43,7 +43,7 @@ class SpecializationAPITestCase(TestCase):
 
     def test_anonymous_user_cannot_create(self):
         response = self.client.post(self.list_url, self.valid_payload)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_regular_user_cannot_create(self):
         self.client.force_authenticate(user=self.regular_user)

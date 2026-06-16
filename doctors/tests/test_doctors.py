@@ -75,10 +75,10 @@ class DoctorListCreateTest(BaseAPITest):
         )
         self.assertEqual(r.status_code, 403)
 
-    def test_create_unauthenticated_forbidden(self):
+    def test_create_unauthenticated_unauthorized(self):
         self.as_anon()
         r = self.client.post(self.url(), {}, content_type="application/json")
-        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.status_code, 401)
 
 
 class DoctorDetailTest(BaseAPITest):
