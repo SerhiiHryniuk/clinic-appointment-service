@@ -158,13 +158,10 @@ class DoctorSlotViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         slot = self.get_object()
-        if hasattr(slot, "appointments") and slot.appointments is not None:
+        if slot.appointments.exists():
             return Response(
-                {
-                    "detail": "Cannot delete a slot with "
-                              "an existing appointments."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+                {"detail": "Cannot delete a slot with existing appointments."},
+                status=status.HTTP_400_BAD_REQUEST
             )
         return super().destroy(request, *args, **kwargs)
 

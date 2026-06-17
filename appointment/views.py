@@ -118,9 +118,12 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
         appointment.status = Appointment.Status.CANCELLED
         appointment.save()
-        create_payment_session(
-            appointment, Payment.Type.CANCELLATION_FEE, request=request
-        )
+
+        if appointment.is_late_cancellation():
+            create_payment_session(
+                appointment, Payment.Type.CANCELLATION_FEE, request=request
+            )
+
         serializer = self.get_serializer(appointment)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
