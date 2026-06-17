@@ -160,8 +160,8 @@ class DoctorSlotViewSet(viewsets.ModelViewSet):
         slot = self.get_object()
         if slot.appointments.exists():
             return Response(
-                {"detail": "Cannot delete a slot with an existing appointments."},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"detail": "Cannot delete a slot with existing appointments."},
+                status=status.HTTP_400_BAD_REQUEST
             )
         return super().destroy(request, *args, **kwargs)
 
