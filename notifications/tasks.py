@@ -3,6 +3,8 @@ from celery import shared_task
 from django.conf import settings
 from django.utils import timezone
 from appointment.models import Appointment
+from payments.services import create_payment_session
+from payments.models import Payment
 
 
 @shared_task(
@@ -30,14 +32,31 @@ def send_telegram_message_task(self, message: str) -> None:
 def check_and_mark_noshow_appointments_daily_task() -> None:
     now = timezone.now()
     expired_appointments = Appointment.objects.filter(
-        status=Appointment.Status.BOOKED, doctor_slot__end__lt=now
+        status=Appointment.Status.BOOKED,
+        doctor_slot__end__lt=now
     )
 
-    count = expired_appointments.count()
+    count = 0
+    for appointment in expired_appointments:
+        appointment.status = Appointment.Status.NO_SHOW
+        appointment.save()
+
+        try:
+            create_payment_session(
+                appointment,
+                Payment.Type.NO_SHOW_FEE,
+                request=None
+            )
+        except Exception:
+            pass
+
+        count += 1
 
     if count > 0:
-        expired_appointments.update(status=Appointment.Status.NO_SHOW)
-        msg = f"<b>Daily Report:</b> System processed {count} no-shows."
+        msg = (
+            f"<b>Daily Report:</b> System processed {count} "
+            f"no-shows and generated penalties."
+        )
         send_telegram_message_task.delay(msg)
     else:
         send_telegram_message_task.delay(
