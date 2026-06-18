@@ -1,5 +1,8 @@
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
+
+from doctors.models import DoctorSlot
 from payments.serializers import PaymentSerializer
 from .models import Appointment
 
@@ -46,13 +49,33 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context.get("request")
         patient = request.user
-        doctor_slot = validated_data["doctor_slot"]
+        doctor_slot_id = validated_data["doctor_slot"].id
 
-        price_at_booking = getattr(doctor_slot.doctor, "price_per_visit", 0.00)
+        with transaction.atomic():
+            doctor_slot = DoctorSlot.objects.select_for_update().get(
+                id=doctor_slot_id
+            )
 
-        return Appointment.objects.create(
-            doctor_slot=doctor_slot,
-            patient=patient,
-            price=price_at_booking,
-            status=Appointment.Status.BOOKED
-        )
+            if Appointment.objects.filter(
+                    doctor_slot=doctor_slot,
+                    status=Appointment.Status.BOOKED
+            ).exists():
+                raise serializers.ValidationError(
+                    {
+                        "doctor_slot": "This doctor slot was just booked "
+                                       "by someone else."
+                    }
+                )
+
+            price_at_booking = getattr(
+                doctor_slot.doctor,
+                "price_per_visit",
+                0.00
+            )
+
+            return Appointment.objects.create(
+                doctor_slot=doctor_slot,
+                patient=patient,
+                price=price_at_booking,
+                status=Appointment.Status.BOOKED
+            )
