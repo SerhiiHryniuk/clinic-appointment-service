@@ -34,6 +34,16 @@ class UsersApiTests(TestCase):
         self.assertEqual(response.data["email"], new_user_data["email"])
         self.assertNotIn("password", response.data)
 
+    def test_register_user_weak_password_fails(self):
+        weak_user_data = {
+            "email": "test_weak@test.com",
+            "password": "12345",
+            "first_name": "test_first_weak",
+            "last_name": "test_last_weak",
+        }
+        response = self.client.post(self.register_url, weak_user_data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_get_jwt_token_success(self):
         data = {
             "email": self.user_data["email"],
