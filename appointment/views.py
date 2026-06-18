@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
@@ -47,7 +47,12 @@ from .serializers import AppointmentSerializer, AppointmentCreateSerializer
         ],
     )
 )
-class AppointmentViewSet(viewsets.ModelViewSet):
+class AppointmentViewSet(
+    mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet
+):
     permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):

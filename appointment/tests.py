@@ -290,3 +290,19 @@ class AppointmentApiTests(APITestCase):
 
         response = self.client.post(url)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cannot_book_past_slot(self):
+        past_time = timezone.now() - timezone.timedelta(days=1)
+        past_slot = DoctorSlot.objects.create(
+            doctor=self.doctor,
+            start=past_time,
+            end=past_time + timezone.timedelta(hours=1)
+        )
+
+        self.client.force_authenticate(user=self.patient_1)
+        payload = {"doctor_slot": past_slot.id}
+
+        response = self.client.post(self.list_url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("doctor_slot", response.data)
