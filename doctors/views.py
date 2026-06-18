@@ -4,22 +4,23 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    extend_schema_view,
     extend_schema,
-    OpenApiParameter
+    extend_schema_view,
+    OpenApiParameter,
 )
-from rest_framework import viewsets, status, generics, mixins
+from loguru import logger
+from rest_framework import generics, mixins, status, viewsets
 from rest_framework.response import Response
 
 from config.permissions import IsAdminOrReadOnly
 from doctors.models import Doctor, DoctorSlot
 from doctors.serializers import (
-    DoctorListSerializer,
     DoctorDetailSerializer,
-    DoctorSlotDetailSerializer,
-    DoctorSlotCreateSerializer,
-    DoctorSlotListSerializer,
+    DoctorListSerializer,
     DoctorSlotBulkCreateSerializer,
+    DoctorSlotCreateSerializer,
+    DoctorSlotDetailSerializer,
+    DoctorSlotListSerializer,
 )
 
 
@@ -80,28 +81,28 @@ class DoctorViewSet(viewsets.ModelViewSet):
 
 @extend_schema_view(
     list=extend_schema(
-        summary="Retrieve a list of all doctor slots",
+        summary="Retrieve a list of all doctor doctor_slot",
         tags=["Doctor Slots"],
         parameters=[
             OpenApiParameter(
                 name="from",
                 type=OpenApiTypes.DATETIME,
                 location=OpenApiParameter.QUERY,
-                description="Filter slots starting from this datetime",
+                description="Filter doctor_slot starting from this datetime",
                 required=False,
             ),
             OpenApiParameter(
                 name="to",
                 type=OpenApiTypes.DATETIME,
                 location=OpenApiParameter.QUERY,
-                description="Filter slots ending before this datetime",
+                description="Filter doctor_slot ending before this datetime",
                 required=False,
             ),
             OpenApiParameter(
                 name="available_only",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description="Pass 'true' to return only slots "
+                description="Pass 'true' to return only doctor_slot "
                             "with no booked appointments",
                 required=False,
                 enum=["true", "false"],
@@ -148,10 +149,17 @@ class DoctorSlotViewSet(
     def destroy(self, request, *args, **kwargs):
         slot = self.get_object()
         if slot.appointments.exists():
+            logger.warning(
+                f"Denied Slot Deletion: Admin tried to delete Slot #{slot.id} "
+                f"for Dr. {slot.doctor}, but it has active patient bookings."
+            )
             return Response(
                 {"detail": "Cannot delete a slot with existing appointments."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        logger.info(f"Slot #{slot.id} for "
+                    f"Dr. {slot.doctor} was successfully removed by Admin.")
         return super().destroy(request, *args, **kwargs)
 
 
@@ -204,9 +212,17 @@ class DoctorSlotBulkCreateView(generics.GenericAPIView):
         doctor = get_object_or_404(Doctor, pk=doctor_id)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
         start = serializer.validated_data["start"]
         end = serializer.validated_data["end"]
         interval = serializer.validated_data["interval"]
+
+        logger.info(
+            f"Bulk Slot Generation started for "
+            f"Dr. {doctor} (ID: {doctor_id}) | "
+            f"Range: {start} to {end} | Interval: {interval} minutes"
+        )
+
         existing_slots = DoctorSlot.objects.filter(
             doctor=doctor,
             start__lt=end,
@@ -232,7 +248,14 @@ class DoctorSlotBulkCreateView(generics.GenericAPIView):
                     )
                 )
             current = next_time
+
         DoctorSlot.objects.bulk_create(slots)
+
+        logger.info(
+            f"Bulk Generation Complete: "
+            f"Generated {len(slots)} new calendar slots "
+            f"for Dr. {doctor}."
+        )
 
         return Response({
             "created": len(slots)

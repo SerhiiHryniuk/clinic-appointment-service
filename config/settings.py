@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from celery.schedules import crontab
 from dotenv import load_dotenv
+from loguru import logger
 
 load_dotenv()
 
@@ -120,3 +121,14 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(hour=0, minute=0),
     },
 }
+
+LOGS_DIR = os.path.join(BASE_DIR, "logs")
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+logger.add(
+    os.path.join(LOGS_DIR, "clinic_api.log"),
+    rotation="10 MB",
+    retention="1 week",
+    level="INFO",
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {module}:{function}:{line} - {message}"
+)

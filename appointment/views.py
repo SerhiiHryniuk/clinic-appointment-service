@@ -1,19 +1,20 @@
-from rest_framework import viewsets, status, mixins
-from rest_framework.decorators import action
-from rest_framework.generics import get_object_or_404
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from drf_spectacular.utils import (
-    extend_schema_view,
     extend_schema,
+    extend_schema_view,
     OpenApiParameter,
 )
+from loguru import logger
+from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.generics import get_object_or_404
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from payments.models import Payment
 from payments.services import create_payment_session
 from .models import Appointment
-from .serializers import AppointmentSerializer, AppointmentCreateSerializer
+from .serializers import AppointmentCreateSerializer, AppointmentSerializer
 
 
 @extend_schema(tags=["Appointments"])
@@ -99,9 +100,9 @@ class AppointmentViewSet(
     @extend_schema(
         summary="Cancel an appointment",
         description=(
-            "Allows patients to cancel their own appointment, "
-            "or staff to cancel any appointment. "
-            "Only booked appointments can be cancelled."
+                "Allows patients to cancel their own appointment, "
+                "or staff to cancel any appointment. "
+                "Only booked appointments can be cancelled."
         ),
         responses={
             200: AppointmentSerializer,
@@ -124,7 +125,18 @@ class AppointmentViewSet(
         appointment.status = Appointment.Status.CANCELLED
         appointment.save()
 
+        logger.info(
+            f"Appointment #{appointment.id} cancelled by "
+            f"User: {request.user.email} "
+            f"(Patient owner: {appointment.patient.email})"
+        )
+
         if appointment.is_late_cancellation():
+            logger.info(
+                f"Late cancellation detected for "
+                f"Appointment #{appointment.id}! "
+                f"Generating Stripe checkout session for cancellation fee."
+            )
             create_payment_session(
                 appointment, Payment.Type.CANCELLATION_FEE, request=request
             )
@@ -135,8 +147,8 @@ class AppointmentViewSet(
     @extend_schema(
         summary="Complete an appointment",
         description=(
-            "Allows staff members to mark an appointment as completed. "
-            "Sets the completion timestamp."
+                "Allows staff members to mark an appointment as completed. "
+                "Sets the completion timestamp."
         ),
         responses={
             200: AppointmentSerializer,
@@ -173,6 +185,13 @@ class AppointmentViewSet(
         appointment.status = Appointment.Status.COMPLETED
         appointment.completed_at = timezone.now()
         appointment.save()
+
+        logger.info(
+            f"Appointment #{appointment.id} marked as COMPLETED by "
+            f"Staff: {request.user.email}. "
+            f"Initializing billing checkout for standard consultation fee."
+        )
+
         create_payment_session(
             appointment, Payment.Type.CONSULTATION, request=request
         )
@@ -182,8 +201,8 @@ class AppointmentViewSet(
     @extend_schema(
         summary="Mark an appointment as no-show",
         description=(
-            "Allows staff members to manually mark an appointment "
-            "as no-show if the patient did not arrive."
+                "Allows staff members to manually mark an appointment "
+                "as no-show if the patient did not arrive."
         ),
         responses={
             200: AppointmentSerializer,
@@ -223,6 +242,13 @@ class AppointmentViewSet(
 
         appointment.status = Appointment.Status.NO_SHOW
         appointment.save()
+
+        logger.info(
+            f"Appointment #{appointment.id} marked as NO-SHOW by "
+            f"Staff: {request.user.email}. "
+            f"Generating penalty charge sheet."
+        )
+
         create_payment_session(
             appointment, Payment.Type.NO_SHOW_FEE, request=request
         )

@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.utils import timezone
+from loguru import logger
 from rest_framework import serializers
 
 from doctors.models import DoctorSlot
@@ -60,6 +61,12 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
                     doctor_slot=doctor_slot,
                     status=Appointment.Status.BOOKED
             ).exists():
+                logger.warning(
+                    f"Concurrency Conflict: "
+                    f"Patient {patient.email} blocked from booking "
+                    f"Slot #{doctor_slot_id}. "
+                    f"Another request acquired the row lock first."
+                )
                 raise serializers.ValidationError(
                     {
                         "doctor_slot": "This doctor slot was just booked "
@@ -73,9 +80,17 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
                 0.00
             )
 
-            return Appointment.objects.create(
+            appointment = Appointment.objects.create(
                 doctor_slot=doctor_slot,
                 patient=patient,
                 price=price_at_booking,
                 status=Appointment.Status.BOOKED
             )
+
+            logger.info(
+                f"Appointment #{appointment.id} successfully booked | "
+                f"Patient: {patient.email} | "
+                f"Slot: #{doctor_slot_id} | Price: {price_at_booking}"
+            )
+
+            return appointment

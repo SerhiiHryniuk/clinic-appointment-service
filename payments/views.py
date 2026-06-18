@@ -5,6 +5,7 @@ from drf_spectacular.utils import (
     extend_schema_view,
     OpenApiParameter
 )
+from loguru import logger
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
@@ -49,9 +50,9 @@ class PaymentViewSet(ReadOnlyModelViewSet):
     tags=["Payments"],
     summary="Stripe payment success",
     description=(
-        "Stripe redirects here after a successful checkout. "
-        "Verifies the session status via the Stripe API and marks "
-        "the Payment record as PAID."
+            "Stripe redirects here after a successful checkout. "
+            "Verifies the session status via the Stripe API and marks "
+            "the Payment record as PAID."
     ),
     parameters=[
         OpenApiParameter(
@@ -60,7 +61,8 @@ class PaymentViewSet(ReadOnlyModelViewSet):
             location=OpenApiParameter.QUERY,
             description=(
                 "Stripe Checkout Session ID — appended automatically "
-                "by Stripe via the {CHECKOUT_SESSION_ID} template variable."
+                "by Stripe via the {CHECKOUT_SESSION_ID} "
+                "template variable."
             ),
             required=True,
         )
@@ -84,6 +86,8 @@ class PaymentSuccessView(APIView):
     def get(self, request):
         session_id = request.query_params.get("session_id")
         if not session_id:
+            logger.warning("Payment Success view called without "
+                           "a session_id parameter.")
             return Response(
                 {"detail": "Missing session_id query parameter."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -92,13 +96,20 @@ class PaymentSuccessView(APIView):
         stripe.api_key = settings.STRIPE_SECRET_KEY
         try:
             session = stripe.checkout.Session.retrieve(session_id)
-        except stripe.error.InvalidRequestError:
+        except stripe.error.InvalidRequestError as e:
+            logger.error(f"Failed to retrieve session from Stripe for ID: "
+                         f"{session_id}. Error: {e}")
             return Response(
                 {"detail": "Invalid Stripe session ID."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         if session.payment_status != "paid":
+            logger.warning(
+                f"Payment confirmation rejected. "
+                f"Stripe Session status for {session_id} "
+                f"is '{session.payment_status}', not 'paid'."
+            )
             return Response(
                 {"detail": "Payment has not been completed yet."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -106,6 +117,12 @@ class PaymentSuccessView(APIView):
 
         payment = Payment.objects.filter(session_id=session_id).first()
         if not payment:
+            logger.critical(
+                f"Data Inconsistency: Stripe confirmed payment for "
+                f"Session {session_id}, "
+                f"but no corresponding Payment record "
+                f"exists in the local database!"
+            )
             return Response(
                 {"detail": "Payment record not found."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -114,6 +131,15 @@ class PaymentSuccessView(APIView):
         if payment.status != Payment.Status.PAID:
             payment.status = Payment.Status.PAID
             payment.save(update_fields=["status"])
+
+            logger.info(
+                f"Verified Success: Payment #{payment.id} "
+                f"for Appointment #{payment.appointment_id} "
+                f"successfully changed status to PAID."
+            )
+        else:
+            logger.info(f"Payment #{payment.id} was already marked as PAID. "
+                        f"Skipping duplicate processing.")
 
         return Response(
             {
@@ -129,9 +155,10 @@ class PaymentSuccessView(APIView):
     tags=["Payments"],
     summary="Stripe payment cancelled / paused",
     description=(
-        "Stripe redirects here when the customer closes the checkout page. "
-        "The session remains open for 24 hours, so the patient can retry "
-        "payment using the original session_url."
+            "Stripe redirects here when the customer "
+            "closes the checkout page. "
+            "The session remains open for 24 hours, so the patient can retry "
+            "payment using the original session_url."
     ),
     parameters=[
         OpenApiParameter(
@@ -162,6 +189,12 @@ class PaymentCancelView(APIView):
             payment = Payment.objects.filter(session_id=session_id).first()
 
         if payment:
+            logger.info(
+                f"Checkout Abandoned: Patient exited Stripe interface for "
+                f"Payment #{payment.id} "
+                f"(Appointment #{payment.appointment_id}). "
+                f"Session remains open."
+            )
             return Response(
                 {
                     "detail": (
@@ -174,6 +207,8 @@ class PaymentCancelView(APIView):
                 status=status.HTTP_200_OK,
             )
 
+        logger.info("Anonymous or detached cancel redirect "
+                    "received at checkout exit.")
         return Response(
             {
                 "detail": (
