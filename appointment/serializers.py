@@ -1,5 +1,5 @@
+from django.utils import timezone
 from rest_framework import serializers
-
 from payments.serializers import PaymentSerializer
 from .models import Appointment
 
@@ -28,6 +28,11 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
         fields = ["doctor_slot"]
 
     def validate_doctor_slot(self, value):
+        if value.start <= timezone.now():
+            raise serializers.ValidationError(
+                "Cannot book a slot that has already started or passed."
+            )
+
         if Appointment.objects.filter(
                 doctor_slot=value,
                 status=Appointment.Status.BOOKED
@@ -35,6 +40,7 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "This doctor slot has already been booked."
             )
+
         return value
 
     def create(self, validated_data):
