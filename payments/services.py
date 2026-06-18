@@ -113,7 +113,7 @@ def create_payment_session(appointment, payment_type: str, request=None):
     )
 
     logger.info(
-        f"✅ Stripe Checkout Session generated successfully! "
+        f"Stripe Checkout Session generated successfully! "
         f"Internal Payment Record #{payment_record.id} "
         f"| Stripe Session ID: {session.id}"
     )
