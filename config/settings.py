@@ -116,7 +116,7 @@ CELERY_TASK_SERIALIZER = "json"
 
 CELERY_BEAT_SCHEDULE = {
     "check-noshow-daily": {
-        "task": "notifications.tasks.check_and_mark_noshow_appointments_daily_task",
+        "task": "appointment.tasks.check_and_mark_noshow_appointments_daily_task",
         "schedule": crontab(hour=0, minute=0),
     },
 }
