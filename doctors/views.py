@@ -8,7 +8,7 @@ from drf_spectacular.utils import (
     extend_schema,
     OpenApiParameter
 )
-from rest_framework import viewsets, status, generics
+from rest_framework import viewsets, status, generics, mixins
 from rest_framework.response import Response
 
 from config.permissions import IsAdminOrReadOnly
@@ -129,24 +129,13 @@ class DoctorViewSet(viewsets.ModelViewSet):
         tags=["Doctor Slots"],
     ),
 )
-class DoctorSlotViewSet(viewsets.ModelViewSet):
+class DoctorSlotViewSet(
+    mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet
+):
     permission_classes = [IsAdminOrReadOnly]
-
-    def get_queryset(self):
-        queryset = DoctorSlot.objects.select_related("doctor")
-        start = self.request.query_params.get("from")
-        end = self.request.query_params.get("to")
-        available_only = self.request.query_params.get("available_only")
-        if start:
-            queryset = queryset.filter(start__gte=start)
-        if end:
-            queryset = queryset.filter(end__lte=end)
-        if available_only == "true":
-            queryset = queryset.filter(
-                appointments__isnull=True
-            )
-
-        return queryset
+    queryset = DoctorSlot.objects.all()
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -262,7 +251,7 @@ class DoctorSlotBulkCreateView(generics.GenericAPIView):
         if end:
             queryset = queryset.filter(end__lte=end)
         if available_only == "true":
-            queryset = queryset.filter(appointments__isnull=True)
+            queryset = queryset.exclude(appointments__status="BOOKED")
         serializer = DoctorSlotListSerializer(queryset, many=True)
 
         return Response(serializer.data)
