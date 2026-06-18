@@ -6,7 +6,9 @@ from notifications.tasks import send_telegram_message_task
 
 
 @receiver(post_save, sender=Appointment)
-def appointment_status_notification_signal(sender, instance, created, **kwargs):
+def appointment_status_notification_signal(
+    sender, instance, created, **kwargs
+):
     if created:
         start_time = instance.doctor_slot.start.strftime("%d.%m.%Y %H:%M")
         end_time = instance.doctor_slot.end.strftime("%H:%M")
@@ -16,12 +18,18 @@ def appointment_status_notification_signal(sender, instance, created, **kwargs):
             f"Doctor: {instance.doctor_slot.doctor}\n"
             f"Time: {start_time} - {end_time}"
         )
-        transaction.on_commit(lambda: send_telegram_message_task.delay(message))
+        transaction.on_commit(
+            lambda: send_telegram_message_task.delay(message)
+        )
     else:
-        original_status = getattr(instance, "_Appointment__original_status", None)
+        original_status = getattr(
+            instance, "_Appointment__original_status", None
+        )
         if instance.status != original_status:
             message = (
                 f"🔄 <b>Status of appointment #{instance.id} updated</b>\n"
                 f"New status: <b>{instance.get_status_display()}</b>"
             )
-            transaction.on_commit(lambda: send_telegram_message_task.delay(message))
+            transaction.on_commit(
+                lambda: send_telegram_message_task.delay(message)
+            )

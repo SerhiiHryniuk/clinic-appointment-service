@@ -27,9 +27,15 @@ def check_and_mark_noshow_appointments_daily_task() -> None:
                 Payment.Type.NO_SHOW_FEE,
                 request=None
             )
-            logger.info(f"Successfully generated No-Show penalty for appointment #{appointment.id}")
+            logger.info(
+                f"Successfully generated No-Show penalty "
+                f"for appointment #{appointment.id}"
+            )
         except Exception as e:
-            logger.error(f"Failed to generate Stripe payment for appointment #{appointment.id}. Error: {e}")
+            logger.error(
+                f"Failed to generate Stripe payment for "
+                f"appointment #{appointment.id}. Error: {e}"
+            )
 
         count += 1
 

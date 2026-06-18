@@ -22,4 +22,3 @@ def send_telegram_message_task(self, message: str) -> None:
         parse_mode="HTML",
         disable_web_page_preview=True,
     )
-    
