@@ -1,0 +1,221 @@
+import stripe
+from django.conf import settings
+from drf_spectacular.utils import (
+    extend_schema,
+    extend_schema_view,
+    OpenApiParameter
+)
+from loguru import logger
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.views import APIView
+from rest_framework.viewsets import ReadOnlyModelViewSet
+from rest_framework.pagination import PageNumberPagination
+
+from payments.models import Payment
+from payments.serializers import PaymentSerializer
+
+
+class PaymentPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
+@extend_schema(tags=["Payments"])
+@extend_schema_view(
+    list=extend_schema(
+        summary="List payments",
+        description="Patients see only their own payments; Staff see all."
+    ),
+    retrieve=extend_schema(
+        summary="Payment details",
+        description="Detailed information about a specific payment."
+    )
+)
+class PaymentViewSet(ReadOnlyModelViewSet):
+    serializer_class = PaymentSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = PaymentPagination
+
+    def get_queryset(self):
+        queryset = Payment.objects.select_related("appointment__patient")
+        if not self.request.user.is_staff:
+            return queryset.filter(appointment__patient=self.request.user)
+        return queryset
+
+
+@extend_schema(
+    tags=["Payments"],
+    summary="Stripe payment success",
+    description=(
+            "Stripe redirects here after a successful checkout. "
+            "Verifies the session status via the Stripe API and marks "
+            "the Payment record as PAID."
+    ),
+    parameters=[
+        OpenApiParameter(
+            "session_id",
+            type=str,
+            location=OpenApiParameter.QUERY,
+            description=(
+                "Stripe Checkout Session ID — appended automatically "
+                "by Stripe via the {CHECKOUT_SESSION_ID} "
+                "template variable."
+            ),
+            required=True,
+        )
+    ],
+    responses={
+        200: {
+            "type": "object",
+            "properties": {
+                "detail": {"type": "string"},
+                "payment_id": {"type": "integer"},
+                "status": {"type": "string"},
+            },
+        },
+        400: {"type": "object", "properties": {"detail": {"type": "string"}}},
+        404: {"type": "object", "properties": {"detail": {"type": "string"}}},
+    },
+)
+class PaymentSuccessView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        session_id = request.query_params.get("session_id")
+        if not session_id:
+            logger.warning("Payment Success view called without "
+                           "a session_id parameter.")
+            return Response(
+                {"detail": "Missing session_id query parameter."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        try:
+            session = stripe.checkout.Session.retrieve(session_id)
+        except stripe.error.InvalidRequestError as e:
+            logger.error(f"Failed to retrieve session from Stripe for ID: "
+                         f"{session_id}. Error: {e}")
+            return Response(
+                {"detail": "Invalid Stripe session ID."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if session.payment_status != "paid":
+            logger.warning(
+                f"Payment confirmation rejected. "
+                f"Stripe Session status for {session_id} "
+                f"is '{session.payment_status}', not 'paid'."
+            )
+            return Response(
+                {"detail": "Payment has not been completed yet."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payment = Payment.objects.filter(session_id=session_id).first()
+        if not payment:
+            logger.critical(
+                f"Data Inconsistency: Stripe confirmed payment for "
+                f"Session {session_id}, "
+                f"but no corresponding Payment record "
+                f"exists in the local database!"
+            )
+            return Response(
+                {"detail": "Payment record not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if payment.status != Payment.Status.PAID:
+            payment.status = Payment.Status.PAID
+            payment.save(update_fields=["status"])
+
+            logger.info(
+                f"Verified Success: Payment #{payment.id} "
+                f"for Appointment #{payment.appointment_id} "
+                f"successfully changed status to PAID."
+            )
+        else:
+            logger.info(f"Payment #{payment.id} was already marked as PAID. "
+                        f"Skipping duplicate processing.")
+
+        return Response(
+            {
+                "detail": "Payment confirmed successfully.",
+                "payment_id": payment.id,
+                "status": payment.status,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+@extend_schema(
+    tags=["Payments"],
+    summary="Stripe payment cancelled / paused",
+    description=(
+            "Stripe redirects here when the customer "
+            "closes the checkout page. "
+            "The session remains open for 24 hours, so the patient can retry "
+            "payment using the original session_url."
+    ),
+    parameters=[
+        OpenApiParameter(
+            "session_id",
+            type=str,
+            location=OpenApiParameter.QUERY,
+            description="Stripe Checkout Session ID (optional).",
+            required=False,
+        )
+    ],
+    responses={
+        200: {
+            "type": "object",
+            "properties": {
+                "detail": {"type": "string"},
+                "session_url": {"type": "string"},
+            },
+        },
+    },
+)
+class PaymentCancelView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        session_id = request.query_params.get("session_id")
+        payment = None
+        if session_id:
+            payment = Payment.objects.filter(session_id=session_id).first()
+
+        if payment:
+            logger.info(
+                f"Checkout Abandoned: Patient exited Stripe interface for "
+                f"Payment #{payment.id} "
+                f"(Appointment #{payment.appointment_id}). "
+                f"Session remains open."
+            )
+            return Response(
+                {
+                    "detail": (
+                        "Payment was not completed. "
+                        "You can finish it using the link below — "
+                        "the session remains active for 24 hours."
+                    ),
+                    "session_url": payment.session_url,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        logger.info("Anonymous or detached cancel redirect "
+                    "received at checkout exit.")
+        return Response(
+            {
+                "detail": (
+                    "Payment was not completed. "
+                    "Please return to your appointment and try again. "
+                    "Your session is available for 24 hours."
+                ),
+            },
+            status=status.HTTP_200_OK,
+        )
